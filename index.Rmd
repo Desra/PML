@@ -1,0 +1,245 @@
+---
+title: "Prediction Assignment Writeup"
+author: "Suraya Akmal Alipiah"
+date: "February 10, 2016"
+output: html_document
+---
+
+#Overview
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement - a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. 
+
+In this project, the goal is to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset).
+
+Credit to -> http://groupware.les.inf.puc-rio.br/har for providing the data
+
+#Data
+
+The training data for this project are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here:
+
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+--------------------
+
+#Loading and preprocessing the data 
+
+###1. Load the data
+
+Step 1: Add ggplot2 & caret libraries and disable the scientific notation displayed in plot (eg. 0.0004835312 instead of 4.835312e-04)  
+
+```{r, echo=TRUE, message=FALSE}
+library(ggplot2)
+library(caret)
+#library(rpart)
+#library(randomForest)
+options(scipen=999)
+set.seed(2016)
+```
+###
+Step 2: Set project working directory  
+```{r, echo=TRUE}
+directory <- c("C:/pmProject")
+setwd(directory)
+```
+###
+Step 3: Download training data file  
+
+```{r, echo=TRUE, message=FALSE}
+fileName <- c("pml-training.csv")
+if(!file.exists(fileName)) {
+        setInternet2(use = TRUE)
+        message("... Downloading training data ...")
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv", fileName)
+} else
+        message("... Training data file already exists ...")
+```
+###
+Step 4: Download test data file  
+
+```{r, echo=TRUE, message=FALSE}
+fileName <- c("pml-testing.csv")
+if(!file.exists(fileName)) {
+        setInternet2(use = TRUE)
+        message("... Downloading test data ...")
+        download.file("https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv", fileName)
+} else
+        message("... Testing data file already exists ...")
+```
+###
+Step 5: Load training data into a table. 
+While reading the data, remove NAs, empty values and undefined words like #DIV/0!
+
+```{r, echo=TRUE, cache=TRUE, message=FALSE}
+if(any(dir()=="pml-training.csv")) {   
+        message("... Loading training data ...")
+        message("... This will take a while ;)  ...")
+        train_data <- read.csv('pml-training.csv', header = TRUE, na.strings=c("NA","#DIV/0!", ""))
+        message("... Loading data completed ...")
+} else
+        message("... File pml-training.csv doesn't exist ...")
+```
+###
+Step 6: Load test data into a table. 
+While reading the data, remove NAs, empty values and undefined words like #DIV/0!
+
+```{r, echo=TRUE, cache=TRUE, message=FALSE}
+if(any(dir()=="pml-testing.csv")) {   
+        message("... Loading test data ...")
+        message("... This will take a while ;)  ...")
+        test_data <- read.csv('pml-testing.csv', header = TRUE, na.strings=c("NA","#DIV/0!", ""))
+        message("... Loading data completed ...")
+} else
+        message("... File pml-testing.csv doesn't exist ...")
+```
+
+--------------------
+
+###2. Clean and transform the data in preparation for analysis
+
+Data            Rows                    Columns
+-------------   -------------           --------------
+Training Data   `r nrow(train_data)`                    `r ncol(train_data)`
+Test Data       `r nrow(test_data)`                        `r ncol(test_data)`
+
+
+Upon inspection on training data, we need to remove columns with all missing values. (Repeat this for test data as well)
+
+```{r, echo=TRUE}
+train_data<-train_data[,colSums(is.na(train_data)) == 0]
+test_data<-test_data[,colSums(is.na(test_data)) == 0]
+```
+
+Also, we need to remove variables that are unrelated to the prediction process (Repeat this for test data as well)
+
+The variables are:
+
+[,1] <blank>
+
+[,2] user_name 
+
+[,3] raw_timestamp_part_1, 
+
+[,4] raw_timestamp_part_2,
+
+[,5] cvtd_timestamp, 
+
+[,6] new_window
+
+[,7] num_window
+
+```{r, echo=TRUE}
+train_data <- train_data[,colSums(is.na(train_data)) == 0]
+train_data <- train_data[,-c(1:7)]
+
+test_data <- test_data[,colSums(is.na(test_data)) == 0]
+test_data <- test_data[,-c(1:7)]
+```
+
+After cleaning the data, we now have the following:
+
+Data                    Rows                    Columns
+-------------           -------------           --------------
+Training Data           `r nrow(train_data)`                    `r ncol(train_data)`
+Test Data               `r nrow(test_data)`                        `r ncol(test_data)`
+
+
+###3. Explore the data
+
+By inspecting variable classe, we can see that it has 5 levels/category groups.
+
+```{r}
+summary(train_data$classe)
+plot(train_data$classe, col="salmon", xlab = "Classe Categories", ylab = "Counts", main = "Training Data - Variable Classe Categories")
+```
+
+--------------------
+
+#Prediction Model
+
+###Cross Validation Strategy
+
+We will be further splitting the training data into 2 subset:
+
+* 75% - train_sub
+* 25% - test_sub
+
+```{r}
+train_Parts <- createDataPartition(train_data$classe, p = .75, list = FALSE)
+train_sub <- train_data[train_Parts,]
+test_sub  <- train_data[-train_Parts,]
+```
+
+Data                    Rows                    Columns
+-------------           -------------           --------------
+Training Data           `r nrow(train_data)`                    `r ncol(train_data)`
+-> Train_sub            `r nrow(train_sub)`                     `r ncol(train_sub)`
+-> Test_sub             `r nrow(test_sub)`                      `r ncol(test_sub)`
+Test Data               `r nrow(test_data)`                        `r ncol(test_data)`
+
+
+###Prediction Model Selection
+
+We will be considering 2 prediction models.
+
+* Prediction Trees
+* Random Forest
+
+**1. Prediction Trees**
+
+```{r, warning=FALSE, cache=TRUE}
+tree_model <- train(classe ~ ., data = train_sub, method="rpart")
+tree_predict <- predict(tree_model,test_sub)
+treeP_M <- confusionMatrix(tree_predict, test_sub$classe)
+treeP_M 
+```
+
+Getting the Out of Sample Error
+```{r, warning=FALSE, cache=TRUE}
+len_predictTree <- length(tree_predict)
+outOfSampleErrorTree.acc <- sum(tree_predict == test_sub$classe)/len_predictTree
+outOfSampleErrorTree <- (1 - outOfSampleErrorTree.acc) * 100
+```
+
+
+**2. Random Forest**
+
+```{r, warning=FALSE, cache=TRUE}
+forest_model <- randomForest(classe ~. , data= train_sub, method="class")
+forest_predict <- predict(forest_model, test_sub) 
+randomF_M <- confusionMatrix(forest_predict, test_sub$classe)
+randomF_M
+```
+
+Getting the Out of Sample Error
+```{r, warning=FALSE, cache=TRUE}
+len_predictForest <- length(forest_predict)
+outOfSampleErrorForest.acc <- sum(forest_predict == test_sub$classe)/len_predictForest
+outOfSampleErrorForest <- (1 - outOfSampleErrorForest.acc) * 100
+```
+
+###The Final Verdict
+
+Prediction Model        Accuracy                                95% CI                  Out of Sample Error (%)
+----------------        ----------------------------            ----------              ----------------------
+Decision Trees          `r treeP_M$overall['Accuracy']`                                 `r treeP_M$overall[3]`, `r treeP_M$overall[4]`             `r outOfSampleErrorTree`     
+Random Forest           `r randomF_M$overall['Accuracy']`                               `r randomF_M$overall[3]`, `r randomF_M$overall[4]`           `r outOfSampleErrorForest`
+
+
+As we can see from the results of the confusion matrix, the Random Forest model has the highest accuracy with `r randomF_M$overall['Accuracy']` and a 95% CI between [`r randomF_M$overall[3]`, `r randomF_M$overall[4]`]. It also has the lowest out of sample error `r outOfSampleErrorForest`% compared to Decision Trees Model
+
+***With an accuracy > 99% on the train data, we will be selecting Random Forest as our final prediction model***
+
+--------------------
+
+##Applying Prediction Model to the test data 
+
+Using the final prediction model, we would be able to perform prediction on the testing data sourced from https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv)
+
+```{r, warning=FALSE, cache=TRUE}
+final_predict <- predict(forest_model, test_data) 
+final_predict
+
+```
